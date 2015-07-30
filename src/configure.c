@@ -149,7 +149,8 @@ show_prompt(const char *cfgfile, const char *realold, const char *realnew,
 	          "    Y or I  : install the package maintainer's version\n"
 	          "    N or O  : keep your currently-installed version\n"
 	          "      D     : show the differences between the versions\n"
-	          "      Z     : start a shell to examine the situation\n"));
+	          "      Z     : start a shell to examine the situation\n"
+	          "      V     : use vimdiff to resolve conflict\n"));
 
 	if (what & CFOF_KEEP)
 		fprintf(stderr,
@@ -159,7 +160,7 @@ show_prompt(const char *cfgfile, const char *realold, const char *realnew,
 		        _(" The default action is to install the new version.\n"));
 
 	s = path_basename(cfgfile);
-	fprintf(stderr, "*** %s (Y/I/N/O/D/Z) %s ? ", s,
+	fprintf(stderr, "*** %s (Y/I/N/O/D/Z/V) %s ? ", s,
 	        (what & CFOF_KEEP) ? _("[default=N]") :
 	        (what & CFOF_INSTALL) ? _("[default=Y]") :
 	        _("[no default]"));
@@ -213,6 +214,32 @@ show_diff(const char *old, const char *new)
 
 	/* Parent process. */
 	subproc_reap(pid, _("conffile difference visualizer"), SUBPROC_NOCHECK);
+}
+
+/**
+ * Use vimdiff to resolve conflict
+ *
+ * @param old The path to the old file.
+ * @param new The path to the new file.
+ */
+static void
+vimdiff(const char *old, const char *new)
+{
+	pid_t pid;
+
+	pid = subproc_fork();
+	if (!pid) {
+		/* Child process. */
+		char cmdbuf[1024];
+
+		sprintf(cmdbuf, "vimdiff %.250s %.250s",
+		        str_quote_meta(new), str_quote_meta(old));
+
+		command_shell(cmdbuf, _("conffile vimdiff"));
+	}
+
+	/* Parent process. */
+	subproc_wait(pid, _("conffile vimdiff"));
 }
 
 /**
@@ -293,6 +320,9 @@ promptconfaction(struct pkginfo *pkg, const char *cfgfile,
 
 		if (cc == 'z')
 			spawn_shell(realold, realnew);
+
+		if (cc == 'v')
+			vimdiff(realold, realnew);
 	} while (!strchr("yino", cc));
 
 	log_message("conffile %s %s", cfgfile,
